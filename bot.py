@@ -13,6 +13,7 @@ import logging
 import os
 import re
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
@@ -30,6 +31,15 @@ if not BOT_TOKEN:
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
+
+# Часовой пояс Казахстана (UTC+5) — используем всегда, независимо от того,
+# в каком часовом поясе физически работает сервер (Railway обычно UTC).
+TZ = ZoneInfo("Asia/Almaty")
+
+
+def now_local() -> datetime:
+    return datetime.now(TZ)
+
 
 TIME_RE = re.compile(r"^([01]?\d|2[0-3]):([0-5]\d)$")
 
@@ -83,7 +93,7 @@ async def cmd_add(message: Message):
 
 @dp.message(Command("list"))
 async def cmd_list(message: Message):
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = now_local().strftime("%Y-%m-%d")
     tasks = db.get_tasks_for_today(message.from_user.id, today)
 
     if not tasks:
@@ -129,7 +139,7 @@ async def cmd_delete(message: Message):
 
 async def check_reminders():
     """Каждую минуту проверяем, есть ли задачи, о которых пора напомнить."""
-    now = datetime.now()
+    now = now_local()
     current_time = now.strftime("%H:%M")
     today = now.strftime("%Y-%m-%d")
 
@@ -149,10 +159,10 @@ async def reset_flags_at_midnight():
 async def main():
     db.init_db()
 
-    scheduler = AsyncIOScheduler()
+    scheduler = AsyncIOScheduler(timezone=TZ)
     # Проверяем напоминания каждую минуту
     scheduler.add_job(check_reminders, "interval", minutes=1)
-    # В полночь сбрасываем флаги отправки для повторяющихся задач
+    # В полночь по времени Казахстана сбрасываем флаги отправки для повторяющихся задач
     scheduler.add_job(reset_flags_at_midnight, "cron", hour=0, minute=0)
     scheduler.start()
 
